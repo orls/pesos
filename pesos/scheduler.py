@@ -328,7 +328,6 @@ class MesosSchedulerDriver(SchedulerDriver):
   def _initialize_detector(self):
     if self.master_uri.startswith("zk:"):
       return ZookeeperMasterDetector(self.master_uri)
-      # raise Exception("The zookeeper master detector is not supported")
 
     return StandaloneMasterDetector(self.master_uri)
 
