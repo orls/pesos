@@ -8,7 +8,7 @@ import socket
 from .api import SchedulerDriver
 from .util import timed, unique_suffix
 from .vendor import mesos
-from .detector import StandaloneMasterDetector
+from .detector import StandaloneMasterDetector, ZookeeperMasterDetector
 
 from compactor.context import Context
 from compactor.pid import PID
@@ -327,7 +327,8 @@ class MesosSchedulerDriver(SchedulerDriver):
 
   def _initialize_detector(self):
     if self.master_uri.startswith("zk:"):
-      raise Exception("The zookeeper master detector is not supported")
+      return ZookeeperMasterDetector(self.master_uri)
+      # raise Exception("The zookeeper master detector is not supported")
 
     return StandaloneMasterDetector(self.master_uri)
 

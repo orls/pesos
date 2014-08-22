@@ -23,6 +23,7 @@ setup(
   install_requires=[
     'compactor==0.1.0',
     'protobuf==2.5.0',
+    'twitter.common.zookeeper==0.3.1'
   ],
   zip_safe=True
 )
