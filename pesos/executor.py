@@ -130,10 +130,10 @@ class ExecutorProcess(ProtobufProcess):
     ack_uuid = uuid.UUID(bytes=message.uuid)
 
     log.info(
-      'Executor received status update acknowledgement %s for task %s of framework %s',
-      ack_uuid,
-      message.task_id.value,
-      message.framework_id.value
+        'Executor received status update acknowledgement %s for task %s of framework %s',
+        ack_uuid,
+        message.task_id.value,
+        message.framework_id.value
     )
 
     if not self.updates.pop(ack_uuid, None):
@@ -204,9 +204,9 @@ class ExecutorProcess(ProtobufProcess):
       return
 
     update = mesos.internal.StatusUpdate(
-      status=status,
-      timestamp=time.time(),
-      uuid=uuid.uuid4().get_bytes()
+        status=status,
+        timestamp=time.time(),
+        uuid=uuid.uuid4().get_bytes()
     )
 
     update.framework_id.value = self.framework_id
@@ -216,8 +216,8 @@ class ExecutorProcess(ProtobufProcess):
     update.status.slave_id.value = self.slave_id
 
     message = mesos.internal.StatusUpdateMessage(
-      update=update,
-      pid=str(self.pid)
+        update=update,
+        pid=str(self.pid)
     )
 
     self.updates[update.uuid] = update
