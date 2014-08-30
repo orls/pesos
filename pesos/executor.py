@@ -304,7 +304,7 @@ class PesosExecutorDriver(ExecutorDriver):
     )
 
     self.context.spawn(self.executor_process)
-    self.context.loop.add_callback(self.__maybe_register)
+    self.context.loop.add_callback(self.executor_process.__maybe_register)
 
     log.info("Started driver")
 
