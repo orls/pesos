@@ -56,11 +56,21 @@ class ExecutorProcess(ProtobufProcess):
 
   def initialize(self):
     super(ExecutorProcess, self).initialize()
+    self.context.loop.add_callback(self.__maybe_register)
+
+  # TODO(tarnfeld) Implement reliable registration -- i.e. __maybe_register() should operate
+  # in a loop until self.connected.is_set().
+  def __maybe_register(self):
+    if self.connected.is_set() or self.slave is None:
+      return
 
     log.info('Registering executor with slave %s' % self.slave)
+
+    # TODO(tarnfeld): Should we only register if we've never registered before?
     message = mesos.internal.RegisterExecutorMessage()
     message.framework_id.value = self.framework_id
     message.executor_id.value = self.executor_id
+
     self.send(self.slave, message)
 
   @ProtobufProcess.install(mesos.internal.ExecutorRegisteredMessage)
