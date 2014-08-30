@@ -54,9 +54,9 @@ class ExecutorProcess(ProtobufProcess):
       return method(self, *args, **kwargs)
     return _wrapper
 
-  # TODO(tarnfeld) Implement reliable registration -- i.e. __maybe_register() should operate
+  # TODO(tarnfeld) Implement reliable registration -- i.e. maybe_register() should operate
   # in a loop until self.connected.is_set().
-  def __maybe_register(self):
+  def maybe_register(self):
     if self.connected.is_set() or self.slave is None:
       return
 
@@ -304,7 +304,7 @@ class PesosExecutorDriver(ExecutorDriver):
     )
 
     self.context.spawn(self.executor_process)
-    self.context.loop.add_callback(self.executor_process.__maybe_register)
+    self.context.loop.add_callback(self.executor_process.maybe_register)
 
     log.info("Started driver")
 
