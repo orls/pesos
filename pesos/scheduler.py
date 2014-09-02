@@ -93,14 +93,14 @@ class SchedulerProcess(ProtobufProcess):
     else:
       self.master = None
 
-    self.__maybe_register()
+    #self.__maybe_register()
 
     # TODO(wickman) Detectors should likely operate on PIDs and not URIs.
     self.detector.detect(previous=master_uri).add_done_callback(self.detected)
 
   # TODO(wickman) Implement reliable registration -- i.e. __maybe_register() should operate
   # in a loop until self.connected.is_set().
-  def __maybe_register(self):
+  def maybe_register(self):
     if self.connected.is_set() or self.master is None:
       return
 
@@ -381,6 +381,7 @@ class PesosSchedulerDriver(SchedulerDriver):
         self.detector,
     )
     self.context.spawn(self.scheduler_process)
+    self.context.loop.add_callback(self.scheduler_process.maybe_register)
     self.status = mesos.DRIVER_RUNNING
     return self.status
 
