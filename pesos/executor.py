@@ -5,14 +5,13 @@ import threading
 import time
 import uuid
 
-from .api import ExecutorDriver
 from .vendor import mesos
-from .util import timed, unique_suffix
+from .util import camel_call, timed, unique_suffix
 
 from compactor.context import Context
 from compactor.pid import PID
-from compactor.process import ProtobufProcess
-
+from compactor.process import Process, ProtobufProcess
+from mesos.interface import ExecutorDriver
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +33,7 @@ class ExecutorProcess(ProtobufProcess):
     self.executor_id = executor_id
 
     self.aborted = threading.Event()
+    self.stopped = threading.Event()
     self.connected = threading.Event()
 
     self.directory = directory
@@ -54,9 +54,10 @@ class ExecutorProcess(ProtobufProcess):
       return method(self, *args, **kwargs)
     return _wrapper
 
-  def register(self):
-    log.info('Registering executor with slave %s', self.slave)
+  def initialize(self):
+    super(ExecutorProcess, self).initialize()
 
+    log.info('Registering executor with slave %s' % self.slave)
     message = mesos.internal.RegisterExecutorMessage()
     message.framework_id.value = self.framework_id
     message.executor_id.value = self.executor_id
@@ -65,20 +66,16 @@ class ExecutorProcess(ProtobufProcess):
   @ProtobufProcess.install(mesos.internal.ExecutorRegisteredMessage)
   @ignore_if_aborted
   def registered(self, from_pid, message):
-    if self.aborted.is_set():
-      log.info('Ignoring registered message from slave %s because the driver is aborted.', message.slave_id)
-      return
-
     log.info('Executor registered on slave %s' % self.slave_id)
     self.connected.set()
     self.connection = uuid.uuid4()
 
     with timed(log.debug, 'executor::registered'):
-      self.executor.registered(
-        self.driver,
-        message.executor_info,
-        message.framework_info,
-        message.slave_info
+      camel_call(self.executor, 'registered',
+          self.driver,
+          message.executor_info,
+          message.framework_info,
+          message.slave_info
       )
 
   @ProtobufProcess.install(mesos.internal.ExecutorReregisteredMessage)
@@ -90,7 +87,7 @@ class ExecutorProcess(ProtobufProcess):
     self.connection = uuid.uuid4()
 
     with timed(log.debug, 'executor::reregistered'):
-      self.executor.reregistered(self.driver, message.slave_info)
+      camel_call(self.executor, 'reregistered', self.driver, message.slave_info)
 
   @ProtobufProcess.install(mesos.internal.ReconnectExecutorMessage)
   @ignore_if_aborted
@@ -117,7 +114,7 @@ class ExecutorProcess(ProtobufProcess):
     self.tasks[task.task_id.value] = task
 
     with timed(log.debug, 'executor::launch_task'):
-      self.executor.launch_task(self.driver, task)
+      camel_call(self.executor, 'launch_task', self.driver, task)
 
   @ProtobufProcess.install(mesos.internal.KillTaskMessage)
   @ignore_if_aborted
@@ -125,7 +122,7 @@ class ExecutorProcess(ProtobufProcess):
     log.info('Executor asked to kill task %s' % message.task_id)
 
     with timed(log.debug, 'executor::kill_task'):
-      self.executor.kill_task(self.driver, message.task_id)
+      camel_call(self.executor, 'kill_task', self.driver, message.task_id)
 
   @ProtobufProcess.install(mesos.internal.StatusUpdateAcknowledgementMessage)
   @ignore_if_aborted
@@ -151,20 +148,24 @@ class ExecutorProcess(ProtobufProcess):
     log.info('Executor received framework message')
 
     with timed(log.debug, 'executor::framework_message'):
-      self.executor.framework_message(self.driver, message.data)
+      camel_call(self.executor, 'framework_message', self.driver, message.data)
 
   @ProtobufProcess.install(mesos.internal.ShutdownExecutorMessage)
   @ignore_if_aborted
   def shutdown(self, from_pid, message):
     with timed(log.debug, 'executor::shutdown'):
-      self.executor.shutdown(self.driver)
+      camel_call(self.executor, 'shutdown', self.driver)
 
     self.stop()
 
+  @Process.install('stop')
   @ignore_if_aborted
   def stop(self):
-    self.context.stop()
+    self.stopped.set()
+    self.terminate()
+    # Shutdown?
 
+  @Process.install('abort')
   @ignore_if_aborted
   def abort(self):
     self.connected.clear()
@@ -180,7 +181,7 @@ class ExecutorProcess(ProtobufProcess):
       return
 
     with timed(log.debug, 'executor::shutdown'):
-      self.executor.shutdown(self.driver)
+      camel_call(self.executor, 'shutdown', self.driver)
 
     log.info('Slave exited. Aborting.')
     self.abort()
@@ -198,7 +199,8 @@ class ExecutorProcess(ProtobufProcess):
       log.error('Executor is not allowed to send TASK_STAGING, aborting!')
       self.driver.abort()
       with timed(log.debug, 'executor::error'):
-        self.executor.error(self.driver, 'Attempted to send TASK_STAGING status update.')
+        camel_call(self.executor, 'error', self.driver,
+            'Attempted to send TASK_STAGING status update.')
       return
 
     update = mesos.internal.StatusUpdate(
@@ -232,8 +234,7 @@ class ExecutorProcess(ProtobufProcess):
   del ignore_if_aborted
 
 
-class MesosExecutorDriver(ExecutorDriver):
-
+class PesosExecutorDriver(ExecutorDriver):
   @classmethod
   def get_env(cls, key):
     try:
@@ -248,7 +249,7 @@ class MesosExecutorDriver(ExecutorDriver):
     return os.environ[key] == "1"
 
   def __init__(self, executor, context=None):
-    self.context = context or Context()
+    self.context = context or Context.singleton()
     self.executor = executor
     self.executor_process = None
     self.executor_pid = None
@@ -283,22 +284,18 @@ class MesosExecutorDriver(ExecutorDriver):
 
     assert self.executor_process is None
     self.executor_process = ExecutorProcess(
-      slave_pid,
-      self,
-      self.executor,
-      slave_id,
-      framework_id,
-      executor_id,
-      directory,
-      checkpoint,
-      recovery_timeout_secs,
+        slave_pid,
+        self,
+        self.executor,
+        slave_id,
+        framework_id,
+        executor_id,
+        directory,
+        checkpoint,
+        recovery_timeout_secs,
     )
 
     self.context.spawn(self.executor_process)
-
-    self.context.start()
-    self.executor_process.link(slave_pid)
-    self.context.loop.add_callback(self.executor_process.register)
 
     log.info("Started driver")
 
@@ -345,7 +342,7 @@ class MesosExecutorDriver(ExecutorDriver):
     return self.status if self.status is not mesos.DRIVER_RUNNING else self.join()
 
   @locked
-  def send_status_update(self, status):
+  def sendStatusUpdate(self, status):
     if self.status is not mesos.DRIVER_RUNNING:
       return self.status
     assert self.executor_process is not None
@@ -353,7 +350,7 @@ class MesosExecutorDriver(ExecutorDriver):
     return self.status
 
   @locked
-  def send_framework_message(self, data):
+  def sendFrameworkMessage(self, data):
     if self.status is not mesos.DRIVER_RUNNING:
       return self.status
     assert self.executor_process is not None
@@ -361,3 +358,6 @@ class MesosExecutorDriver(ExecutorDriver):
     return self.status
 
   del locked
+
+  send_status_update = sendStatusUpdate
+  send_framework_message = sendFrameworkMessage

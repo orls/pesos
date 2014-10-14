@@ -21,9 +21,11 @@ setup(
     'pesos.vendor.mesos.internal.state',
   ],
   install_requires=[
-    'compactor==0.1.0',
+    'compactor==0.1.3',
     'protobuf==2.5.0',
-    'twitter.common.zookeeper==0.3.1'
+    'futures==2.1.6',
+    'mesos.interface==0.20.0',
+    'twitter.common.zookeeper==0.3.1',
   ],
   zip_safe=True
 )
