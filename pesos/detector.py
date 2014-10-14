@@ -1,5 +1,6 @@
 from socket import inet_ntoa
 from struct import pack
+from urlparse import urlparse
 
 from kazoo.client import KazooClient
 from twitter.common.zookeeper.group.kazoo_group import KazooGroup
@@ -22,12 +23,14 @@ class StandaloneMasterDetector(MasterDetector):
     pass
 
   def __init__(self, leader):
-    # TODO(tarnfeld): Resolve to an IP address as hostnames cause issues
-    # with libprocess PIDs
-    self.leader = leader
+    try:
+      host, port = leader.split(":")
+    except ValueError:
+      raise Exception("Expected host:port but got %s" % leader)
 
-  def appoint(self, leader):
-    pass
+    # Resolve the host to ensure we have an IP address
+    host = socket.gethostbyname(host)
+    self.leader = "%s:%s" % (host, port)
 
   def detect(self, previous=None):
     return self.leader
@@ -37,37 +40,50 @@ class MesosKazooGroup(KazooGroup):
   """
   Mesos uses 'info_' as a prefix for member nodes.
   """
+
   MEMBER_PREFIX = 'info_'
 
 
 class ZookeeperMasterDetector(MasterDetector):
   """
-  Zookeeper based master detector.
+  Zookeeper based Mesos master detector.
   """
 
-  def __init__(self, url, election_path='/'):
-    # strip off "zk://" prefix and pass to kazoo
-    url = url[len('zk://'):]
-    self._kazoo_client = KazooClient(url)
-    # initialize group watcher once - even if we don't use callback interface
+  ZK_PREFIX = "zk://"
+
+  def __init__(self, url):
+    url = urlparse(url)
+    if url.scheme.lower() != "zk":
+      raise Exception("Expected zk:// URL")
+
+    self._previous = frozenset()  # Previously detected group members
+    self._kazoo_client = KazooClient(url.netloc)
+
+    # Initialize group watcher once - even if we don't use callback interface
     # it makes a lot movements in it's __init__
-    self._group_watcher = MesosKazooGroup(self._kazoo_client, election_path)
-    self._previous = frozenset()  # previously detected group members
-    # let's start async because there a lot of other scenarios
+    self._group_watcher = MesosKazooGroup(self._kazoo_client, url.path)
+
+    # Let's start async because there a lot of other scenarios
     # in which we fail to detect master even after connection
     # and even connection can fail anytime
     self._kazoo_client.start_async()
 
   def detect(self, previous=None):
-    while True:  # seems like we can receive empty set
+    # Sit and wait until we detect nodes in the group
+    while True:
       previous = self._group_watcher.monitor(self._previous)
-      if previous:
+      if previous:  # seems like we can receive empty set so let's be sure
         break
-    # we receive a set of members, we need master, which is the first one
+
+    # We receive a set of members, we need master, which is the first one
     self._previous = previous
+
     leader = sorted(self._previous)[0]
     leader_data = self._group_watcher.info(leader)
+
     master_info = MasterInfo()
     master_info.MergeFromString(leader_data)
-    return "{ip}:{port}".format(ip=inet_ntoa(pack('<L', master_info.ip)),
-                                port=master_info.port)
+    return "{ip}:{port}".format(
+        ip=inet_ntoa(pack('<L', master_info.ip)),
+        port=master_info.port
+    )
