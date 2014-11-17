@@ -1,7 +1,9 @@
 from collections import defaultdict
+from getpass import getuser
 import functools
 import logging
 import threading
+import socket
 import sys
 
 from .detector import StandaloneMasterDetector
