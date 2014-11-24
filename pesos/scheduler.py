@@ -6,7 +6,7 @@ import threading
 import socket
 import sys
 
-from .detector import StandaloneMasterDetector
+from .detector import StandaloneMasterDetector, ZookeeperMasterDetector
 from .util import camel_call, timed, unique_suffix
 from .vendor import mesos
 
@@ -389,7 +389,7 @@ class PesosSchedulerDriver(SchedulerDriver):
 
   def _initialize_detector(self):
     if self.master_uri.startswith("zk:"):
-      raise Exception("The zookeeper master detector is not supported")
+      return ZookeeperMasterDetector(self.master_uri)
 
     return StandaloneMasterDetector(self.master_uri)
 
