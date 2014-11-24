@@ -204,7 +204,7 @@ class SchedulerProcess(ProtobufProcess):
     assert self.master is not None
     if not self.valid_origin(from_pid):
       return
-    self.slave_pids.pop(message.slave_id)
+    self.saved_slaves.pop(message.slave_id.value)
     with timed(log.debug, 'scheduler::slave_lost'):
       camel_call(self.scheduler, 'slave_lost', self.driver, message.slave_id)
 
@@ -303,6 +303,19 @@ class SchedulerProcess(ProtobufProcess):
       field = message.offer_ids.add()
       field.value = offer_id.value
 
+      for task in tasks:
+        if offer_id in self.saved_offers:
+          if len(self.saved_offers[offer_id.value][task.slave_id.value]) > 0:
+            self.saved_slaves[task.slave_id.value] = \
+                self.saved_offers[offer_id.value][task.slave_id.value]
+          else:
+            log.warning("Attempting to launch task %s with the wrong slave %s",
+                        task.task_id.value, task.slave_id.value)
+        else:
+          log.warning("Attempting to launch task %s with an unknown offer %s",
+                      task.task_id.value, offer_id.value)
+      self.saved_offers.pop(offer_id.value)
+
     self.send(self.master, message)
 
   @ignore_if_disconnected
@@ -316,13 +329,21 @@ class SchedulerProcess(ProtobufProcess):
     assert executor_id is not None
     assert slave_id is not None
     assert data is not None
+
+    pid = self.master
+    if slave_id in self.saved_slaves:
+      pid = self.saved_slaves[slave_id]
+    else:
+      log.warning("Cannot send directly to slave %s, sending through master",
+                  slave_id)
+
     message = mesos.internal.FrameworkToExecutorMessage(
         framework_id=self.framework.id,
         executor_id=executor_id,
         slave_id=slave_id,
         data=data,
     )
-    self.send(self.master, message)
+    self.send(pid, message)
 
   @ignore_if_disconnected
   def reconcile_tasks(self, statuses):
