@@ -1,5 +1,5 @@
 import threading
-from socket import inet_ntoa
+import socket
 from struct import pack
 from urlparse import urlparse
 from concurrent.futures import Future
@@ -128,7 +128,7 @@ class ZookeeperMasterDetector(MasterDetector):
     master_info = MasterInfo()
     master_info.MergeFromString(leader_data)
     leader = "{ip}:{port}".format(
-        ip=inet_ntoa(pack('<L', master_info.ip)),
+        ip=socket.inet_ntoa(pack('<L', master_info.ip)),
         port=master_info.port
     )
 
