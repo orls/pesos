@@ -182,8 +182,7 @@ class SchedulerProcess(ProtobufProcess):
     if not self.valid_origin(from_pid):
       return
     if message.pid:
-      sender_pid = PID.from_string(message.pid)
-      self.status_update_acknowledgement(message.update, sender_pid)
+      self.status_update_acknowledgement(message.update, self.master)
     with timed(log.debug, 'scheduler::status_update'):
       camel_call(self.scheduler, 'status_update', self.driver, message.update.status)
 
