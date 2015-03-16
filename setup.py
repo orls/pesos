@@ -25,9 +25,7 @@ setup(
     'protobuf==2.5.0',
     'futures==2.1.6',
     'mesos.interface==0.20.0',
-    'twitter.common.zookeeper==0.3.1',
-    'twitter.common.quantity==0.3.1',
-    'twitter.common.exceptions==0.3.1',
+    'twitter.common.zookeeper'
   ],
   zip_safe=True
 )
